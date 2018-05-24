@@ -15,9 +15,14 @@
  */
 package com.google.firebase.udacity.friendlychat;
 
+import android.Manifest;
 import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.net.Uri;
 import android.os.Bundle;
 import android.support.annotation.NonNull;
+import android.support.v4.app.ActivityCompat;
+import android.support.v4.content.ContextCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.text.Editable;
 import android.text.InputFilter;
@@ -25,7 +30,6 @@ import android.text.TextWatcher;
 import android.view.Menu;
 import android.view.MenuInflater;
 import android.view.MenuItem;
-import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ImageButton;
@@ -34,6 +38,8 @@ import android.widget.ProgressBar;
 import android.widget.Toast;
 
 import com.firebase.ui.auth.AuthUI;
+import com.google.android.gms.tasks.OnSuccessListener;
+import com.google.android.gms.tasks.Task;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
 import com.google.firebase.database.ChildEventListener;
@@ -41,6 +47,9 @@ import com.google.firebase.database.DataSnapshot;
 import com.google.firebase.database.DatabaseError;
 import com.google.firebase.database.DatabaseReference;
 import com.google.firebase.database.FirebaseDatabase;
+import com.google.firebase.storage.FirebaseStorage;
+import com.google.firebase.storage.StorageReference;
+import com.google.firebase.storage.UploadTask;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -53,11 +62,12 @@ import timber.log.Timber;
 
 public class MainActivity extends AppCompatActivity {
 
-    private static final String TAG = "MainActivity";
-
     public static final String ANONYMOUS = "anonymous";
     public static final int DEFAULT_MSG_LENGTH_LIMIT = 1000;
+    // request codes
     private static final int RC_SIGN_IN = 1001;
+    private static final int RC_PHOTO_PICKER = 1002;
+    private static final int RC_READ_EXT_STORAGE = 1003;
 
     @BindView(R.id.progressBar)
     ProgressBar mProgressBar;
@@ -70,21 +80,20 @@ public class MainActivity extends AppCompatActivity {
     @BindView(R.id.sendButton)
     Button mSendButton;
 
-
+    // child event listener
+    private ChildEventListener mChildEventListener;
     private MessageAdapter mMessageAdapter;
-
     private String mUsername;
-
     // database main access point
     private FirebaseDatabase mFirebaseDatabase;
     // reference to a specific part of the database
     private DatabaseReference mMessagesDatabaseReference;
-    // child event listener
-    ChildEventListener mChildEventListener;
     // auth
     private FirebaseAuth mFirebaseAuth;
     private FirebaseAuth.AuthStateListener mAuthStateListener;
-
+    // storage
+    private FirebaseStorage mFirebaseStorage;
+    private StorageReference mStorageReference;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -103,9 +112,13 @@ public class MainActivity extends AppCompatActivity {
         // initialize
         mFirebaseDatabase = FirebaseDatabase.getInstance();
         mFirebaseAuth = FirebaseAuth.getInstance();
+        mFirebaseStorage = FirebaseStorage.getInstance();
 
         // get a reference to the root node "messages"
         mMessagesDatabaseReference = mFirebaseDatabase.getReference().child("messages");
+        // get reference to remote folder "chat_photos"
+        mStorageReference = mFirebaseStorage.getReference().child("chat_photos");
+
 
         // Initialize message ListView and its adapter
         List<FriendlyMessage> friendlyMessages = new ArrayList<>();
@@ -114,14 +127,6 @@ public class MainActivity extends AppCompatActivity {
 
         // Initialize progress bar
         mProgressBar.setVisibility(ProgressBar.INVISIBLE);
-
-        // ImagePickerButton shows an image picker to upload a image for a message
-        mPhotoPickerButton.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                // TODO: Fire an intent to show an image picker
-            }
-        });
 
         // Enable Send button when there's text to send
         mMessageEditText.addTextChangedListener(new TextWatcher() {
@@ -187,8 +192,48 @@ public class MainActivity extends AppCompatActivity {
                 Toast.makeText(this, "Signed out", Toast.LENGTH_SHORT).show();
                 finish();
             }
+        } else if (requestCode == RC_PHOTO_PICKER) {
+            if (resultCode == RESULT_OK) {
+
+                Uri imageUri = data.getData();
+                StorageReference imageRef = mStorageReference.child(imageUri.getLastPathSegment());
+                final UploadTask uploadTask = imageRef.putFile(imageUri);
+
+                uploadTask.addOnSuccessListener(new OnSuccessListener<UploadTask.TaskSnapshot>() {
+                    @Override
+                    public void onSuccess(UploadTask.TaskSnapshot taskSnapshot) {
+
+                        // At the time I build this, I am using
+                        // com.google.firebase:firebase-storage:16.0.1
+                        // Apparently you can no longer use taskSnapshot.getDownloadUrl()
+                        // In this version from taskSnapshot .getMetadata().getReference()
+                        // .getDownloadUrl() as asynchronous task:
+                        // first get the task
+                        Task<Uri> downloadUrl = taskSnapshot
+                                .getMetadata()
+                                .getReference()
+                                .getDownloadUrl();
+
+                        // attach a OnSuccessListener<Uri>()
+                        downloadUrl.addOnSuccessListener(new OnSuccessListener<Uri>() {
+                            @Override
+                            public void onSuccess(Uri uri) {
+
+                                // we got the Uri. Push the message
+                                FriendlyMessage friendlyMessage = new FriendlyMessage(
+                                        null, mUsername, uri.toString()
+                                );
+                                mMessagesDatabaseReference.push().setValue(friendlyMessage);
+
+                            }
+                        });
+                    }
+                });
+
+            }
         }
     }
+
 
     //
     private void onSignedOutCleanup() {
@@ -275,11 +320,9 @@ public class MainActivity extends AppCompatActivity {
     // Send button click
     // Sends the message and clears the EditText
     @OnClick(R.id.sendButton)
-    void send() {
+    void sendButtonClick() {
 
         String message = mMessageEditText.getText().toString();
-
-        Timber.d("send: %s", message);
 
         // create a friendlyMessage
         FriendlyMessage friendlyMessage = new FriendlyMessage(message, mUsername, null);
@@ -290,6 +333,43 @@ public class MainActivity extends AppCompatActivity {
         // Clear input box
         mMessageEditText.setText("");
 
+    }
+
+
+    // Pick Photo Click
+    @OnClick(R.id.photoPickerButton)
+    void photoPickerButtonClick() {
+        // check permission
+        if (ContextCompat.checkSelfPermission(MainActivity.this, Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED) {
+            pickPhoto();
+        } else {
+            ActivityCompat.requestPermissions(MainActivity.this,
+                    new String[]{Manifest.permission.READ_CONTACTS},
+                    RC_READ_EXT_STORAGE);
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+
+        switch (requestCode) {
+            case RC_READ_EXT_STORAGE:
+                if (grantResults.length > 0
+                        && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    pickPhoto();
+                }
+                break;
+        }
+
+
+    }
+
+    private void pickPhoto() {
+        Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+        intent.setType("image/jpeg");
+        intent.putExtra(Intent.EXTRA_LOCAL_ONLY, true);
+        startActivityForResult(Intent.createChooser(intent, "Complete action using"), RC_PHOTO_PICKER);
     }
 
 
