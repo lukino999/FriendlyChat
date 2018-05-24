@@ -413,7 +413,7 @@ public class MainActivity extends AppCompatActivity {
             pickPhoto();
         } else {
             ActivityCompat.requestPermissions(MainActivity.this,
-                    new String[]{Manifest.permission.READ_CONTACTS},
+                    new String[]{Manifest.permission.READ_EXTERNAL_STORAGE},
                     RC_READ_EXT_STORAGE);
         }
     }
