@@ -38,6 +38,7 @@ import android.widget.ProgressBar;
 import android.widget.Toast;
 
 import com.firebase.ui.auth.AuthUI;
+import com.google.android.gms.tasks.OnFailureListener;
 import com.google.android.gms.tasks.OnSuccessListener;
 import com.google.android.gms.tasks.Task;
 import com.google.firebase.auth.FirebaseAuth;
@@ -47,6 +48,8 @@ import com.google.firebase.database.DataSnapshot;
 import com.google.firebase.database.DatabaseError;
 import com.google.firebase.database.DatabaseReference;
 import com.google.firebase.database.FirebaseDatabase;
+import com.google.firebase.messaging.FirebaseMessagingService;
+import com.google.firebase.messaging.RemoteMessage;
 import com.google.firebase.storage.FirebaseStorage;
 import com.google.firebase.storage.StorageReference;
 import com.google.firebase.storage.UploadTask;
@@ -158,11 +161,11 @@ public class MainActivity extends AppCompatActivity {
                 FirebaseUser user = firebaseAuth.getCurrentUser();
 
                 if (user != null) {
-                    // user not null. We are signed in
-                    Toast.makeText(MainActivity.this, "Welcome to FriendlyChat!", Toast.LENGTH_SHORT).show();
+
                     onSignedInInitialize(user.getDisplayName());
 
                 } else {
+
                     // User is null. We are signed out
                     onSignedOutCleanup();
 
@@ -197,6 +200,8 @@ public class MainActivity extends AppCompatActivity {
 
                 Uri imageUri = data.getData();
                 StorageReference imageRef = mStorageReference.child(imageUri.getLastPathSegment());
+
+
                 final UploadTask uploadTask = imageRef.putFile(imageUri);
 
                 uploadTask.addOnSuccessListener(new OnSuccessListener<UploadTask.TaskSnapshot>() {
@@ -227,6 +232,12 @@ public class MainActivity extends AppCompatActivity {
 
                             }
                         });
+                    }
+                })
+                .addOnFailureListener(new OnFailureListener() {
+                    @Override
+                    public void onFailure(@NonNull Exception e) {
+                        Timber.e(e, "onFailure: %s", e.getMessage());
                     }
                 });
 

@@ -8,11 +8,7 @@ import android.widget.ArrayAdapter;
 import android.widget.ImageView;
 import android.widget.TextView;
 
-import com.bumptech.glide.Glide;
-
 import java.util.List;
-
-import butterknife.BindView;
 
 public class MessageAdapter extends ArrayAdapter<FriendlyMessage> {
     public MessageAdapter(Context context, int resource, List<FriendlyMessage> objects) {
@@ -38,6 +34,7 @@ public class MessageAdapter extends ArrayAdapter<FriendlyMessage> {
             GlideApp.with(photoImageView.getContext())
                     .load(message.getPhotoUrl())
                     .placeholder(android.R.drawable.ic_media_pause)
+                    .error(android.R.drawable.ic_dialog_alert)
                     .fitCenter()
                     .into(photoImageView);
         } else {
