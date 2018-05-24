@@ -48,15 +48,17 @@ import com.google.firebase.database.DataSnapshot;
 import com.google.firebase.database.DatabaseError;
 import com.google.firebase.database.DatabaseReference;
 import com.google.firebase.database.FirebaseDatabase;
-import com.google.firebase.messaging.FirebaseMessagingService;
-import com.google.firebase.messaging.RemoteMessage;
+import com.google.firebase.remoteconfig.FirebaseRemoteConfig;
+import com.google.firebase.remoteconfig.FirebaseRemoteConfigSettings;
 import com.google.firebase.storage.FirebaseStorage;
 import com.google.firebase.storage.StorageReference;
 import com.google.firebase.storage.UploadTask;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import butterknife.BindView;
 import butterknife.ButterKnife;
@@ -71,6 +73,7 @@ public class MainActivity extends AppCompatActivity {
     private static final int RC_SIGN_IN = 1001;
     private static final int RC_PHOTO_PICKER = 1002;
     private static final int RC_READ_EXT_STORAGE = 1003;
+    private static final String REMOTE_MSG_LENGHT_KEY = "max_msg_length";
 
     @BindView(R.id.progressBar)
     ProgressBar mProgressBar;
@@ -97,6 +100,8 @@ public class MainActivity extends AppCompatActivity {
     // storage
     private FirebaseStorage mFirebaseStorage;
     private StorageReference mStorageReference;
+    // remote config
+    private FirebaseRemoteConfig mFirebaseRemoteConfig;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -116,6 +121,7 @@ public class MainActivity extends AppCompatActivity {
         mFirebaseDatabase = FirebaseDatabase.getInstance();
         mFirebaseAuth = FirebaseAuth.getInstance();
         mFirebaseStorage = FirebaseStorage.getInstance();
+        mFirebaseRemoteConfig = FirebaseRemoteConfig.getInstance();
 
         // get a reference to the root node "messages"
         mMessagesDatabaseReference = mFirebaseDatabase.getReference().child("messages");
@@ -150,7 +156,8 @@ public class MainActivity extends AppCompatActivity {
             public void afterTextChanged(Editable editable) {
             }
         });
-        mMessageEditText.setFilters(new InputFilter[]{new InputFilter.LengthFilter(DEFAULT_MSG_LENGTH_LIMIT)});
+        //mMessageEditText.setFilters(new InputFilter[]{new InputFilter.LengthFilter(DEFAULT_MSG_LENGTH_LIMIT)});
+        applyMsgMaxLenght(DEFAULT_MSG_LENGTH_LIMIT);
 
 
         // initialize the mAuthStateListener
@@ -182,6 +189,54 @@ public class MainActivity extends AppCompatActivity {
             }
         };
 
+        // set remote config settings
+        FirebaseRemoteConfigSettings configSettings = new FirebaseRemoteConfigSettings.Builder()
+                .setDeveloperModeEnabled(true)
+                .build();
+        mFirebaseRemoteConfig.setConfigSettings(configSettings);
+
+        Map<String, Object> defaultConfigSettings = new HashMap<>();
+        defaultConfigSettings.put(REMOTE_MSG_LENGHT_KEY, DEFAULT_MSG_LENGTH_LIMIT);
+
+        mFirebaseRemoteConfig.setDefaults(defaultConfigSettings);
+        //fetchConfig();
+
+    }
+
+
+    private void fetchConfig() {
+        long cacheExpiration = 3600;
+        Timber.d("fetchConfig: begin");
+
+        if (mFirebaseRemoteConfig.getInfo().getConfigSettings().isDeveloperModeEnabled()) {
+            Timber.d("fetchConfig: devModeEnabled");
+            cacheExpiration= 0;
+        }
+
+        mFirebaseRemoteConfig.fetch(cacheExpiration)
+        .addOnSuccessListener(new OnSuccessListener<Void>() {
+            @Override
+            public void onSuccess(Void aVoid) {
+                mFirebaseRemoteConfig.activateFetched();
+                long max_msg_length = mFirebaseRemoteConfig.getLong(REMOTE_MSG_LENGHT_KEY);
+                Timber.d("fetchConfig().onSuccess: max_msg_length  = %s", max_msg_length);
+                applyMsgMaxLenght((int) max_msg_length);
+            }
+        })
+        .addOnFailureListener(new OnFailureListener() {
+            @Override
+            public void onFailure(@NonNull Exception e) {
+                Timber.d(e,"fetchConfig().onFailure: ");
+                long max_msg_length = mFirebaseRemoteConfig.getLong(REMOTE_MSG_LENGHT_KEY);
+                applyMsgMaxLenght((int) max_msg_length);
+            }
+        });
+
+
+    }
+
+    private void applyMsgMaxLenght(int max_msg_length) {
+        mMessageEditText.setFilters(new InputFilter[]{new InputFilter.LengthFilter(max_msg_length)});
     }
 
     @Override
@@ -311,6 +366,9 @@ public class MainActivity extends AppCompatActivity {
     protected void onResume() {
         super.onResume();
         mFirebaseAuth.addAuthStateListener(mAuthStateListener);
+
+        // fetch remote configuration
+        fetchConfig();
     }
 
 
