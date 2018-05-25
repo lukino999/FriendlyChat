@@ -73,7 +73,7 @@ public class MainActivity extends AppCompatActivity {
     private static final int RC_SIGN_IN = 1001;
     private static final int RC_PHOTO_PICKER = 1002;
     private static final int RC_READ_EXT_STORAGE = 1003;
-    private static final String REMOTE_MSG_LENGHT_KEY = "max_msg_length";
+    private static final String REMOTE_MSG_LENGTH_KEY = "max_msg_length";
 
     @BindView(R.id.progressBar)
     ProgressBar mProgressBar;
@@ -130,9 +130,7 @@ public class MainActivity extends AppCompatActivity {
 
 
         // Initialize message ListView and its adapter
-        List<FriendlyMessage> friendlyMessages = new ArrayList<>();
-        mMessageAdapter = new MessageAdapter(this, R.layout.item_message, friendlyMessages);
-        mMessageListView.setAdapter(mMessageAdapter);
+        //setUpListView(); // move this to after the username is set
 
         // Initialize progress bar
         mProgressBar.setVisibility(ProgressBar.INVISIBLE);
@@ -196,11 +194,17 @@ public class MainActivity extends AppCompatActivity {
         mFirebaseRemoteConfig.setConfigSettings(configSettings);
 
         Map<String, Object> defaultConfigSettings = new HashMap<>();
-        defaultConfigSettings.put(REMOTE_MSG_LENGHT_KEY, DEFAULT_MSG_LENGTH_LIMIT);
+        defaultConfigSettings.put(REMOTE_MSG_LENGTH_KEY, DEFAULT_MSG_LENGTH_LIMIT);
 
         mFirebaseRemoteConfig.setDefaults(defaultConfigSettings);
         //fetchConfig();
 
+    }
+
+    private void setUpListView() {
+        List<FriendlyMessage> friendlyMessages = new ArrayList<>();
+        mMessageAdapter = new MessageAdapter(this, R.layout.message_left, R.layout.message_right, friendlyMessages, mUsername);
+        mMessageListView.setAdapter(mMessageAdapter);
     }
 
 
@@ -218,7 +222,7 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onSuccess(Void aVoid) {
                 mFirebaseRemoteConfig.activateFetched();
-                long max_msg_length = mFirebaseRemoteConfig.getLong(REMOTE_MSG_LENGHT_KEY);
+                long max_msg_length = mFirebaseRemoteConfig.getLong(REMOTE_MSG_LENGTH_KEY);
                 Timber.d("fetchConfig().onSuccess: max_msg_length  = %s", max_msg_length);
                 applyMsgMaxLenght((int) max_msg_length);
             }
@@ -227,7 +231,7 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onFailure(@NonNull Exception e) {
                 Timber.d(e,"fetchConfig().onFailure: ");
-                long max_msg_length = mFirebaseRemoteConfig.getLong(REMOTE_MSG_LENGHT_KEY);
+                long max_msg_length = mFirebaseRemoteConfig.getLong(REMOTE_MSG_LENGTH_KEY);
                 applyMsgMaxLenght((int) max_msg_length);
             }
         });
@@ -305,7 +309,9 @@ public class MainActivity extends AppCompatActivity {
     private void onSignedOutCleanup() {
 
         mUsername = ANONYMOUS;
-        mMessageAdapter.clear();
+        if (mMessageAdapter != null) {
+            mMessageAdapter.clear();
+        }
         detachDatabaseReadListener();
     }
 
@@ -323,6 +329,7 @@ public class MainActivity extends AppCompatActivity {
     private void onSignedInInitialize(String displayName) {
 
         mUsername = displayName;
+        setUpListView();
         attachDatabaseReadListener();
 
     }
@@ -381,7 +388,9 @@ public class MainActivity extends AppCompatActivity {
         }
 
         detachDatabaseReadListener();
-        mMessageAdapter.clear();
+        if (mMessageAdapter != null) {
+            mMessageAdapter.clear();
+        }
 
     }
 
